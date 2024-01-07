@@ -27,3 +27,27 @@ variable "ec2_policy_name" {
   description = "EC2 Policy Name"
   default     = "AdministratorAccess"
 }
+
+variable "ec2_instance_type" {
+  type        = string
+  description = "EC2 Instance Type"
+  default     = "m5.large"
+}
+
+variable "ec2_volume_size" {
+  type        = number
+  description = "EC2 Volume Size"
+  default     = 50
+}
+
+variable "ec2_enhanced_monitoring" {
+  type        = bool
+  description = "Enable enhanced monitoring"
+  default     = false
+}
+
+variable "ec2_associate_public_ip_address" {
+  type        = bool
+  description = "Associate public IP address"
+  default     = false
+}

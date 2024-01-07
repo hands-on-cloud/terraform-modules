@@ -1,8 +1,12 @@
 locals {
   aws_account_id  = data.aws_caller_identity.current.account_id
   current_identity = data.aws_caller_identity.current.arn
+  ec2_associate_public_ip_address = var.ec2_associate_public_ip_address
+  ec2_enhanced_monitoring = var.ec2_enhanced_monitoring
   ec2_policy_arn = "arn:aws:iam::aws:policy/${var.ec2_policy_name}"
-  prefix      = "${var.prefix}-windows-jumphost"
+  ec2_instance_type = var.ec2_instance_type
+  ec2_volume_size = var.ec2_volume_size
+  prefix      = "${var.prefix}-windows-jump-host"
   tags        = merge(
     var.tags,
     {
@@ -45,9 +49,9 @@ resource "aws_security_group" "ec2_sg" {
   }
 }
 
-resource "aws_instance" "jumphost" {
+resource "aws_instance" "jump_host" {
   ami           = data.aws_ami.latest_amazon_linux.id
-  instance_type = "m5.large"
+  instance_type = local.ec2_instance_type
 
   iam_instance_profile      = aws_iam_instance_profile.this.name
 
@@ -58,12 +62,12 @@ resource "aws_instance" "jumphost" {
   ebs_optimized = true
 
   root_block_device {
-    volume_size = 100
+    volume_size = local.ec2_volume_size
     encrypted = true
     kms_key_id = module.kms.key_arn
   }
 
-  monitoring = true
+  monitoring = local.ec2_enhanced_monitoring
 
   metadata_options {
     http_endpoint = "enabled"
@@ -86,7 +90,7 @@ resource "aws_instance" "jumphost" {
     </powershell>
   EOF
 
-  associate_public_ip_address = false
+  associate_public_ip_address = local.ec2_associate_public_ip_address
 
   tags = merge(
     local.tags,
@@ -112,10 +116,7 @@ module "kms" {
   # Aliases
   aliases = ["${local.prefix}/ebs"]
 
-  tags = {
-    Terraform   = "true"
-    Environment = "dev"
-  }
+  tags = local.tags
 }
 
 resource "aws_iam_policy" "kms_policy" {
@@ -164,7 +165,7 @@ resource "aws_iam_role_policy_attachment" "ssm_kms_policy_attachment" {
 }
 
 resource "aws_iam_role_policy_attachment" "policy_attachment" {
-  # This Jumphost is used for demo dev projects, allowing Administrator permissions for flexibility
+  # This jump host is used for demo dev projects, allowing Administrator permissions for flexibility
   # checkov:skip=CKV_AWS_274: "Disallow IAM roles, users, and groups from using the AWS AdministratorAccess policy"
   role       = aws_iam_role.this.name
   policy_arn = local.ec2_policy_arn
