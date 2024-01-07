@@ -41,6 +41,12 @@ To update module documentation:
 terraform-docs -c .terraform-docs.yml .
 ```
 
+## Security
+
+```shell
+checkov -d . --download-external-modules kms
+```
+
 ## Contributing
 
 This module is maintained by [https://hands-on.cloud](https://hands-on.cloud).

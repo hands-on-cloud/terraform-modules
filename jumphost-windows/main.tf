@@ -1,10 +1,14 @@
 locals {
-  prefix      = "${var.prefix}-windows-jumphost"
-
+  aws_account_id  = data.aws_caller_identity.current.account_id
+  current_identity = data.aws_caller_identity.current.arn
   ec2_policy_arn = "arn:aws:iam::aws:policy/${var.ec2_policy_name}"
-
-  tags        = var.tags
-
+  prefix      = "${var.prefix}-windows-jumphost"
+  tags        = merge(
+    var.tags,
+    {
+      Name = local.prefix
+    }
+  )
   vpc_id      = var.vpc_id
   vpc_subnet_id = var.vpc_subnet_id
 }
@@ -23,32 +27,7 @@ data "aws_ami" "latest_amazon_linux" {
   }
 }
 
-resource "aws_iam_role" "ssm_role" {
-  name = "${local.prefix}-ssm-role"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17",
-    Statement = [
-      {
-        Action = "sts:AssumeRole",
-        Effect = "Allow",
-        Principal = {
-          Service = "ec2.amazonaws.com"
-        }
-      },
-    ]
-  })
-}
-
-resource "aws_iam_role_policy_attachment" "policy_attachment" {
-  role       = aws_iam_role.ssm_role.name
-  policy_arn = local.ec2_policy_arn
-}
-
-resource "aws_iam_instance_profile" "ssm_instance_profile" {
-  name = "${local.prefix}-instance-profile"
-  role = aws_iam_role.ssm_role.name
-}
+data "aws_caller_identity" "current" {}
 
 resource "aws_security_group" "ec2_sg" {
   name        = "${local.prefix}-sg"
@@ -56,6 +35,7 @@ resource "aws_security_group" "ec2_sg" {
   vpc_id      = local.vpc_id
 
   egress {
+    description = "Allow outbound traffic"
     from_port = 0
     to_port = 0
     protocol = "-1"
@@ -69,16 +49,25 @@ resource "aws_instance" "jumphost" {
   ami           = data.aws_ami.latest_amazon_linux.id
   instance_type = "m5.large"
 
-  iam_instance_profile      = aws_iam_instance_profile.ssm_instance_profile.name
+  iam_instance_profile      = aws_iam_instance_profile.this.name
 
   subnet_id                 = local.vpc_subnet_id
 
   vpc_security_group_ids    = [aws_security_group.ec2_sg.id]
 
+  ebs_optimized = true
+
   root_block_device {
     volume_size = 100
     encrypted = true
-    kms_key_id = aws_kms_key.ssm_key.arn
+    kms_key_id = module.kms.key_arn
+  }
+
+  monitoring = true
+
+  metadata_options {
+    http_endpoint = "enabled"
+    http_tokens   = "required"
   }
 
   user_data = <<-EOF
@@ -107,16 +96,26 @@ resource "aws_instance" "jumphost" {
   )
 }
 
-# KMS for SSM
-resource "aws_kms_key" "ssm_key" {
-  description             = "KMS key for SSM"
-  enable_key_rotation     = true
-  deletion_window_in_days = 10
-}
+module "kms" {
+  #source  = "terraform-aws-modules/kms/aws"
+  #version = "2.1.0"
+  source = "git::https://github.com/terraform-aws-modules/terraform-aws-kms.git?ref=5508c9cdd6fdb0ed4dcf399f54ba02fb8c31bd4b"  # commit hash of version 2.1.0
 
-resource "aws_kms_alias" "ssm_key_alias" {
-  name          = "alias/${local.prefix}-kms-key"
-  target_key_id = aws_kms_key.ssm_key.key_id
+  description = "EC2 AutoScaling key usage"
+  key_usage   = "ENCRYPT_DECRYPT"
+
+  # Policy
+  key_owners                              = [local.current_identity]
+  key_administrators                      = [local.current_identity]
+  key_service_users                       = [aws_iam_role.this.arn]
+
+  # Aliases
+  aliases = ["${local.prefix}/ebs"]
+
+  tags = {
+    Terraform   = "true"
+    Environment = "dev"
+  }
 }
 
 resource "aws_iam_policy" "kms_policy" {
@@ -135,7 +134,7 @@ resource "aws_iam_policy" "kms_policy" {
           "kms:DescribeKey"
         ],
         Resource = [
-          aws_kms_key.ssm_key.arn
+          module.kms.key_arn
         ],
         Effect = "Allow"
       }
@@ -162,4 +161,16 @@ resource "aws_iam_role" "this" {
 resource "aws_iam_role_policy_attachment" "ssm_kms_policy_attachment" {
   role       = aws_iam_role.this.name
   policy_arn = aws_iam_policy.kms_policy.arn
+}
+
+resource "aws_iam_role_policy_attachment" "policy_attachment" {
+  # This Jumphost is used for demo dev projects, allowing Administrator permissions for flexibility
+  # checkov:skip=CKV_AWS_274: "Disallow IAM roles, users, and groups from using the AWS AdministratorAccess policy"
+  role       = aws_iam_role.this.name
+  policy_arn = local.ec2_policy_arn
+}
+
+resource "aws_iam_instance_profile" "this" {
+  name = "${local.prefix}-instance-profile"
+  role = aws_iam_role.this.name
 }
