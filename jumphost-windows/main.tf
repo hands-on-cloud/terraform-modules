@@ -25,10 +25,7 @@ data "aws_ami" "latest" {
     values = ["Windows_Server-2019-English-Full-Base-*"]
   }
 
-  filter {
-    name   = "owner-alias"
-    values = ["amazon"]
-  }
+  owners = ["amazon"]
 }
 
 data "aws_caller_identity" "current" {}
