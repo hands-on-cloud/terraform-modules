@@ -17,7 +17,7 @@ locals {
   vpc_subnet_id = var.vpc_subnet_id
 }
 
-data "aws_ami" "latest_amazon_linux" {
+data "aws_ami" "latest" {
   most_recent = true
 
   filter {
@@ -50,7 +50,7 @@ resource "aws_security_group" "ec2_sg" {
 }
 
 resource "aws_instance" "jump_host" {
-  ami           = data.aws_ami.latest_amazon_linux.id
+  ami           = data.aws_ami.latest.id
   instance_type = local.ec2_instance_type
 
   iam_instance_profile      = aws_iam_instance_profile.this.name
