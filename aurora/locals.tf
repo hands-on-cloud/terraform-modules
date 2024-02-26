@@ -1,4 +1,5 @@
 locals {
+  aws_account_id                  = data.aws_caller_identity.current.account_id
   cluster_identifier              = "${local.prefix}-cluster"
   cluster_parameter_group_family  = var.cluster_parameter_group_family
   cluster_parameter_group_name    = replace("${local.prefix}-group", "[^a-z0-9.-]", "-")
